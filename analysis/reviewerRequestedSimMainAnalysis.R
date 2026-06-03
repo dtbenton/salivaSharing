@@ -1,0 +1,509 @@
+# load libraries 
+library(lme4)
+library(nlme)
+library(boot)
+library(car) 
+library(reshape2)
+library(ggplot2)
+library(ez)
+library(plyr)
+library(ggsignif)
+library(lsr)
+library(sjmisc)
+library(sjstats)
+library(BayesFactor)
+library(foreign)
+library(dplyr)
+library(lattice)
+library(Hmisc)
+
+
+###################################
+###################################
+##                               ##
+##         SIMULATION 3A         ##
+##                               ##
+###################################
+###################################
+setwd("C:/Users/bentod2/Documents/projects/current/newSalivaSharingFolder/data/reviewer1RequestedRevision/3a")
+#setwd("C:/Users/Deon T. Benton/Documents/projects/newSalivaSharingFolder/data/reviewer1RequestedRevision/3a")
+cond46005 = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond46005$V3 = max(cond46005$V3)-cond46005$V3
+
+cond460010 = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond460010$V3 = max(cond460010$V3)-cond460010$V3
+
+cond47005 = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond47005$V3 = max(cond47005$V3)-cond47005$V3
+
+cond470010 = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond470010$V3 = max(cond470010$V3)-cond470010$V3
+
+cond48005 = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond48005$V3 = max(cond48005$V3)-cond48005$V3
+
+cond480010 = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond480010$V3 = max(cond480010$V3)-cond480010$V3
+
+
+
+# combine dataframes into a single 'D' data frame
+D.c1 = rbind(cond46005, cond460010, cond47005, cond470010, cond48005, cond480010)
+
+
+D = D.c1
+
+D = as.data.frame(D)
+
+# get dimensionality of D
+dim(D)
+
+# create an ID column
+D$ID = rep(1:120, each = 2)
+
+D = D[order(D$ID),] 
+
+# create trial type column
+D$trialType = rep(c("Former Saliva Sharer", "Former Non-saliva Sharer"), each = 1, times = 120)
+D$trialType = as.factor(D$trialType)
+
+# epoch
+D$pretrainEpoch = rep(c("600", "700", "800"), each = 80)
+D$pretrainEpoch = as.factor(D$pretrainEpoch)
+
+
+
+# create a 'looking time' column
+D$lookingTime = D$V3
+
+#(max(error) - error)
+
+# remove columns
+D = D[,-c(1:3)]
+
+# get structure of the data
+str(D)
+
+## MAIN ANALYSIS ##
+lm.fit = lme(lookingTime~(trialType + pretrainEpoch)^2, 
+             random=~1|ID, 
+             data = D)
+anova.lme(lm.fit)
+
+
+# FOLLOW UP ANALYSES
+
+# 600 
+fbs_600 = D$lookingTime[D$pretrainEpoch=="600" & D$trialType=="Former Ball Sharer"]
+fss_600 = D$lookingTime[D$pretrainEpoch=="600" & D$trialType=="Former Saliva Sharer"]
+
+t.test(fbs_600, fss_600, paired = TRUE, alternative = "two.sided")
+
+# 800 
+fbs_800 = D$lookingTime[D$pretrainEpoch=="800" & D$trialType=="Former Ball Sharer"]
+fss_800 = D$lookingTime[D$pretrainEpoch=="800" & D$trialType=="Former Saliva Sharer"]
+
+t.test(fbs_800, fss_800, paired = TRUE, alternative = "two.sided")
+
+####################
+## OMNIBUS FIGURE ##
+####################
+# figure
+condition_barplot = ggplot(D, aes(x = "Peek-a-boo", y = lookingTime, fill = trialType))
+
+condition_barplot +
+  stat_summary(fun = mean, geom = "bar", position = position_dodge(width = 0.9), width = 0.8) +
+  stat_summary(fun.data = mean_cl_boot, geom = "errorbar",
+               position = position_dodge(width = 0.9), width = 0.2) +
+  ylab("Expectation") +
+  xlab("Peek-a-boo") +
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~pretrainEpoch) +
+  coord_cartesian(ylim = c(0, 10)) +
+  scale_fill_manual(values = c("black", "azure3")) +
+  labs(fill = "Test Trial") +
+  theme(
+    axis.text.x = element_blank(),
+    axis.ticks.x = element_blank(),
+    axis.text.y = element_text(size = 24),
+    legend.text = element_text(size = 24),
+    legend.title = element_text(size = 24),
+    axis.title = element_text(size = 24),
+    strip.text = element_text(size = 24)
+  )
+
+
+
+####################################
+####################################
+##                                ##
+##         SIMULATION 3Ba         ##
+##                                ##
+####################################
+####################################
+
+
+root = "C:/Users/bentod2/Desktop/newSalivaSharingFolder/data/reviewer1RequestedRevision/3ba"
+
+read_one = function(path) {
+  
+  df = read.table(path, header = FALSE, stringsAsFactors = FALSE)
+  names(df) = c("V1", "V2", "V3")
+  
+  # flip V3 within-file
+  df$V3 = max(df$V3, na.rm = TRUE) - df$V3
+  
+  # metadata from folder structure:
+  # 3ba / 0v100 / test_exp_2b / file.txt
+  
+  df$file = basename(path)
+  df$test_folder = basename(dirname(path))            # e.g., test_exp_2b
+  df$probability = basename(dirname(dirname(path)))   # e.g., 0v100
+  df$top_folder = basename(root)                      # e.g., 3ba
+  
+  # experiment label from folder name
+  df$experiment = ifelse(grepl("2b$", df$test_folder, ignore.case = TRUE),
+                         "2b",
+                         ifelse(grepl("2d$", df$test_folder, ignore.case = TRUE),
+                                "2d",
+                                NA_character_))
+  
+  # parse epochs from filename
+  m = regexec("pEpochs_(\\d+)_tEpochs_(\\d+)", df$file)
+  hit = regmatches(df$file, m)[[1]]
+  if (length(hit) == 3) {
+    df$pEpochs = as.integer(hit[2])
+    df$tEpochs = as.integer(hit[3])
+  } else {
+    df$pEpochs = NA_integer_
+    df$tEpochs = NA_integer_
+  }
+  
+  # parse condition token from filename
+  m2 = regexec("condition_([0-9]+v[0-9]+)", df$file)
+  hit2 = regmatches(df$file, m2)[[1]]
+  df$condition_from_name = if (length(hit2) == 2) hit2[2] else df$probability
+  
+  # standardize trialType from V2
+  v2 = tolower(df$V2)
+  df$trialType = ifelse(grepl("foodsharer", v2),
+                        "Saliva Sharer",
+                        ifelse(grepl("ballsharing", v2),
+                               "Non-saliva Sharer",
+                               NA_character_))
+  
+  df
+}
+
+files = list.files(root, pattern = "\\.txt$", full.names = TRUE, recursive = TRUE)
+
+D = do.call(rbind, lapply(files, read_one))
+D = as.data.frame(D)
+
+
+# add ID column
+D$ID = rep(c(1:1440), each = 2)
+
+
+# add ratio column
+D$ratio = D$probability
+D$ratio = as.factor(D$ratio)
+
+# add condition column
+D$condition = rep(c("Food Sharing", "New Puppet"), each = 240, times = 6)
+D$condition = as.factor(D$condition)
+
+
+# add pretrainEpochs column
+D$pretrainEpochs = rep(c("600", "700", "800"), each = 80, times = 12)
+D$pretrainEpochs = as.factor(D$pretrainEpochs)
+
+# add lookingTime column
+D$lookingTime = D$V3
+
+
+# get names of dataframe
+names(D)
+
+
+# create reduced dataframe  
+D = D[,c("ID", "ratio", "condition","pretrainEpochs","trialType","lookingTime")]
+D = as.data.frame(D)
+
+
+# rename levels of ratio column
+library(plyr)
+D$ratio = revalue(D$ratio, c("0v100" = "0% comfort vs. 100% non-comfort", 
+                             "100v0" = "100% comfort vs. 0% non-comfort",
+                             "10v90" = "10% comfort vs. 90% non-comfort",
+                             "20v80" = "20% comfort vs. 80% non-comfort",
+                             "80v20" = "80% comfort vs. 20% non-comfort",
+                             "90v10" = "90% comfort vs. 10% non-comfort"))
+
+D$ratio = factor(D$ratio, levels = c("100v0" = "100% comfort vs. 0% non-comfort",
+                                     "90v10" = "90% comfort vs. 10% non-comfort",
+                                     "80v20" = "80% comfort vs. 20% non-comfort",
+                                     "20v80" = "20% comfort vs. 80% non-comfort",
+                                     "10v90" = "10% comfort vs. 90% non-comfort",
+                                     "0v100" = "0% comfort vs. 100% non-comfort"))
+
+
+##############
+## ANALYSIS ##
+##############
+# convert data to wide format
+D_wide = reshape(
+  D,
+  idvar = c("ID",  "ratio", "condition", "pretrainEpochs"),
+  timevar = "trialType",
+  direction = "wide"
+)
+
+# get column names from D_wide
+names(D_wide)
+
+# create difference column
+D_wide$diff = D_wide$`lookingTime.Saliva Sharer` - 
+  D_wide$`lookingTime.Non-saliva Sharer`
+
+
+D_wide$ratio = ordered(D_wide$ratio)
+
+lm.fit.cond.1 = lm(diff~as.factor(ratio), 
+            data = D_wide[D_wide$condition=="Condition 1",])
+summary(lm.fit.cond.1)
+
+lm.fit.cond.2 = lm(diff~as.factor(ratio), 
+                   data = D_wide[D_wide$condition=="Condition 2",])
+summary(lm.fit.cond.2)
+
+# 100% comfort v. 0% non-comfort
+one.hundred.zero.comfort.saliva.sharer = D$lookingTime[D$ratio=="100% comfort v. 0% non-comfort" & 
+                                           D$condition=="Condition 1" & D$trialType=="Saliva Sharer"]
+
+one.hundred.zero.comfort.ball.sharer = D$lookingTime[D$ratio=="100% comfort v. 0% non-comfort" & 
+                                                         D$condition=="Condition 1" & D$trialType=="Ball Sharer"]
+
+
+one.hundred.zero.comfort.dif = one.hundred.zero.comfort.saliva.sharer - one.hundred.zero.comfort.ball.sharer
+mean(one.hundred.zero.comfort.dif)
+sd(one.hundred.zero.comfort.dif)
+
+
+# 90% comfort v. 10% non-comfort
+ninety.ten.comfort.saliva.sharer = D$lookingTime[D$ratio=="90% comfort v. 10% non-comfort" & 
+                                                   D$condition=="Condition 1" & D$trialType=="Saliva Sharer"]
+
+ninety.ten.comfort.ball.sharer = D$lookingTime[D$ratio=="90% comfort v. 10% non-comfort" & 
+                                                 D$condition=="Condition 1" & D$trialType=="Ball Sharer"]
+
+
+ninety.ten.comfort.dif = ninety.ten.comfort.saliva.sharer - ninety.ten.comfort.ball.sharer
+mean(ninety.ten.comfort.dif)
+sd(ninety.ten.comfort.dif)
+
+
+# 80% comfort v. 20% non-comfort
+eighty.twenty.comfort.saliva.sharer = D$lookingTime[D$ratio=="80% comfort v. 20% non-comfort" & 
+                                                      D$condition=="Condition 1" & D$trialType=="Saliva Sharer"]
+
+eighty.twenty.comfort.ball.sharer = D$lookingTime[D$ratio=="80% comfort v. 20% non-comfort" & 
+                                                    D$condition=="Condition 1" & D$trialType=="Ball Sharer"]
+
+
+eighty.twenty.comfort.dif = eighty.twenty.comfort.saliva.sharer - eighty.twenty.comfort.ball.sharer
+mean(eighty.twenty.comfort.dif)
+sd(eighty.twenty.comfort.dif)
+
+# 20% comfort v. 80% non-comfort
+twenty.eighty.comfort.saliva.sharer = D$lookingTime[D$ratio=="20% comfort v. 80% non-comfort" & 
+                                                      D$condition=="Condition 1" & D$trialType=="Saliva Sharer"]
+
+twenty.eighty.comfort.ball.sharer = D$lookingTime[D$ratio=="20% comfort v. 80% non-comfort" & 
+                                                    D$condition=="Condition 1" & D$trialType=="Ball Sharer"]
+
+
+twenty.eighty.comfort.dif = twenty.eighty.comfort.saliva.sharer - twenty.eighty.comfort.ball.sharer
+mean(twenty.eighty.comfort.dif)
+sd(twenty.eighty.comfort.dif)
+
+
+# 10% comfort v. 90% non-comfort
+ten.ninety.comfort.saliva.sharer = D$lookingTime[D$ratio=="10% comfort v. 90% non-comfort" & 
+                                                   D$condition=="Condition 1" & D$trialType=="Saliva Sharer"]
+
+ten.ninety.comfort.ball.sharer = D$lookingTime[D$ratio=="10% comfort v. 90% non-comfort" & 
+                                                 D$condition=="Condition 1" & D$trialType=="Ball Sharer"]
+
+
+ten.ninety.comfort.dif = ten.ninety.comfort.saliva.sharer - ten.ninety.comfort.ball.sharer
+mean(ten.ninety.comfort.dif)
+sd(ten.ninety.comfort.dif)
+
+# 0% comfort v. 100% non-comfort
+zero.one.hundred.comfort.saliva.sharer = D$lookingTime[D$ratio=="0% comfort v. 100% non-comfort" & 
+                                                         D$condition=="Condition 1" & D$trialType=="Saliva Sharer"]
+
+zero.one.hundred.comfort.ball.sharer = D$lookingTime[D$ratio=="0% comfort v. 100% non-comfort" & 
+                                                       D$condition=="Condition 1" & D$trialType=="Ball Sharer"]
+
+
+zero.one.hundred.comfort.dif = zero.one.hundred.comfort.saliva.sharer - zero.one.hundred.comfort.ball.sharer
+mean(zero.one.hundred.comfort.dif)
+sd(zero.one.hundred.comfort.dif)
+
+# 100 v 0 compared to 90 v 10
+t.test(one.hundred.zero.comfort.dif, ninety.ten.comfort.dif, paired = FALSE)
+
+# 90 v 10 compared to 80 v 20
+t.test(ninety.ten.comfort.dif, eighty.twenty.comfort.dif, paired = FALSE)
+
+
+# 80 v 20 compared to 20 v 80
+t.test(eighty.twenty.comfort.dif, twenty.eighty.comfort.dif, paired = FALSE)
+
+####################
+## OMNIBUS FIGURE ##
+####################
+
+# create subset dataframe
+
+# figure for "Simulation of Experiment 2A"
+condition_barplot = ggplot(D, aes(condition, lookingTime, fill=trialType)) + stat_summary(fun = mean, geom = "bar", position = "dodge") + # add the bars, which represent the means and the place them side-by-side with 'dodge'
+  stat_summary(fun.data=mean_cl_boot, geom = "errorbar", position = position_dodge(width=0.90), width = 0.2) + # add errors bars
+  ylab("Expectation for Comfort") + # change the label of the y-axis
+  scale_y_continuous(expand = c(0, 0)) +
+  facet_wrap(~ratio) + 
+  coord_cartesian(ylim=c(0, 9)) +
+  scale_fill_manual(values = c("black", "azure3")) +
+  labs(fill="Trial type")  +
+  ggtitle("Ratio of Distressed- to Non-distressed-based Comfort") +
+  theme(
+    axis.text.x = element_text(size = 14),
+    axis.text.y = element_text(size = 14),
+    axis.title.x = element_blank(),
+    axis.title.y = element_text(size = 18),
+    legend.text = element_text(size = 14),
+    legend.title = element_text(size = 14),
+    strip.text = element_text(size = 14),
+    plot.title = element_text(size = 24, hjust = 0.5),
+    plot.margin = margin(t = 10, r = 10, b = 10, l = 10)
+  )
+
+setwd("C:/Users/bentod2/Desktop/newSalivaSharingFolder/figures")
+ggsave(
+  "fig6_06032026.png",
+  plot = condition_barplot,
+  width = 14,
+  height = 8,
+  dpi = 300
+)
+
+
+
+
+############################
+# Simulation of Prediction #
+############################
+
+# 100 v 0 #
+# Comfort Distress: CD #
+setwd("C:/Users/detbe/Documents/projects/newSalivaSharingFolder/data/reviewer1RequestedRevision/3ba/simulationOfPrediction/100v0/test_ComfortingDistress")
+cond600_100v0_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond600_100v0_5_CD$V3 = max(cond600_100v0_5_CD$V3)-cond600_100v0_5_CD$V3
+
+cond600_100v0_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond600_100v0_10_CD$V3 = max(cond600_100v0_10_CD$V3)-cond600_100v0_10_CD$V3
+
+cond700_100v0_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond700_100v0_5_CD$V3 = max(cond700_100v0_5_CD$V3)-cond700_100v0_5_CD$V3
+
+cond700_100v0_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond700_100v0_10_CD$V3 = max(cond700_100v0_10_CD$V3)-cond700_100v0_10_CD$V3
+
+cond800_100v0_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond800_100v0_5_CD$V3 = max(cond800_100v0_5_CD$V3)-cond800_100v0_5_CD$V3
+
+cond800_100v0_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond800_100v0_10_CD$V3 = max(cond800_100v0_10_CD$V3)-cond800_100v0_10_CD$V3
+
+
+
+# 90 v 10 #
+# Comfort Distress: CD #
+setwd("C:/Users/detbe/Documents/projects/newSalivaSharingFolder/data/reviewer1RequestedRevision/3ba/simulationOfPrediction/90v10/test_ComfortingDistress")
+cond600_90v10_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond600_90v10_5_CD$V3 = max(cond600_90v10_5_CD$V3)-cond600_90v10_5_CD$V3
+
+cond600_90v10_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond600_90v10_10_CD$V3 = max(cond600_90v10_10_CD$V3)-cond600_90v10_10_CD$V3
+
+cond700_90v10_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond700_90v10_5_CD$V3 = max(cond700_90v10_5_CD$V3)-cond700_90v10_5_CD$V3
+
+cond700_90v10_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond700_90v10_10_CD$V3 = max(cond700_90v10_10_CD$V3)-cond700_90v10_10_CD$V3
+
+cond800_90v10_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond800_90v10_5_CD$V3 = max(cond800_90v10_5_CD$V3)-cond800_90v10_5_CD$V3
+
+cond800_90v10_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond800_90v10_10_CD$V3 = max(cond800_90v10_10_CD$V3)-cond800_90v10_10_CD$V3
+
+
+
+# 80 v 20 #
+# Comfort Distress: CD #
+setwd("C:/Users/detbe/Documents/projects/newSalivaSharingFolder/data/reviewer1RequestedRevision/3ba/simulationOfPrediction/80v20/test_ComfortingDistress")
+cond600_80v20_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond600_80v20_5_CD$V3 = max(cond600_80v20_5_CD$V3)-cond600_80v20_5_CD$V3
+
+cond600_80v20_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond600_80v20_10_CD$V3 = max(cond600_80v20_10_CD$V3)-cond600_80v20_10_CD$V3
+
+cond700_80v20_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond700_80v20_5_CD$V3 = max(cond700_80v20_5_CD$V3)-cond700_80v20_5_CD$V3
+
+cond700_80v20_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond700_80v20_10_CD$V3 = max(cond700_80v20_10_CD$V3)-cond700_80v20_10_CD$V3
+
+cond800_80v20_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond800_80v20_5_CD$V3 = max(cond800_80v20_5_CD$V3)-cond800_80v20_5_CD$V3
+
+cond800_80v20_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond800_80v20_10_CD$V3 = max(cond800_80v20_10_CD$V3)-cond800_80v20_10_CD$V3
+
+
+# 0 v 100 #
+# Comfort Distress: CD #
+setwd("C:/Users/detbe/Documents/projects/newSalivaSharingFolder/data/reviewer1RequestedRevision/3ba/simulationOfPrediction/0v100/test_ComfortingDistress")
+cond600_0v100_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond600_0v100_5_CD$V3 = max(cond600_0v100_5_CD$V3)-cond600_0v100_5_CD$V3
+
+cond600_0v100_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond600_0v100_10_CD$V3 = max(cond600_0v100_10_CD$V3)-cond600_0v100_10_CD$V3
+
+cond700_0v100_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond700_0v100_5_CD$V3 = max(cond700_0v100_5_CD$V3)-cond700_0v100_5_CD$V3
+
+cond700_0v100_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond700_0v100_10_CD$V3 = max(cond700_0v100_10_CD$V3)-cond700_0v100_10_CD$V3
+
+cond800_0v100_5_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond800_0v100_5_CD$V3 = max(cond800_0v100_5_CD$V3)-cond800_0v100_5_CD$V3
+
+cond800_0v100_10_CD = read.table(file.choose(), header = FALSE, stringsAsFactors = FALSE)
+cond800_0v100_10_CD$V3 = max(cond800_0v100_10_CD$V3)-cond800_0v100_10_CD$V3
+
+
+
+
+
+
+
+
+
+
+
+# 100 v 0 #
+# Comfort Distress Control: CDC #
