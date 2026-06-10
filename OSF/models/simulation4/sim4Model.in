@@ -1,0 +1,139 @@
+# Author: Deon T. Benton
+# Simulation information: The code below corresponds to Simulation 4 reported in the paper.
+
+proc sim4 {} {
+	proc sim4 {netName learningRates pretrainingEpochs hiddenUnits} {
+		addNet $netName 
+
+		# input groups
+		addGroup Object_Left_IN 104 INPUT OUT_NOISE   
+		addGroup Object_Right_IN 104 INPUT OUT_NOISE   
+		addGroup saliva_left_identity_IN 2 INPUT OUT_NOISE 
+		addGroup saliva_right_identity_IN 2 INPUT OUT_NOISE   
+		addGroup comfort_right_identity_IN 2 INPUT OUT_NOISE 
+		addGroup comfort_left_identity_IN 2 INPUT OUT_NOISE  
+		addGroup Distress_IN 2 INPUT OUT_NOISE 
+		addGroup Action_IN 2 INPUT OUT_NOISE 
+		addGroup Comfort_IN 2 INPUT OUT_NOISE  
+		addGroup Food_IN 5 INPUT OUT_NOISE
+		
+		# noise parameters
+		noiseType Object_Left_IN -range 0.875
+		noiseType Object_Right_IN -range 0.875
+		noiseType saliva_left_identity_IN -range 0.875
+		noiseType saliva_right_identity_IN -range 0.875
+		noiseType comfort_right_identity_IN -range 0.875
+		noiseType comfort_left_identity_IN -range 0.875
+		noiseType Distress_IN -range 0.875
+		noiseType Action_IN -range 0.875
+		noiseType Comfort_IN -range 0.875
+		noiseType Food_IN -range 0.875 
+			 
+		# hidden group (# there are necessarily fewer hidden units than there are input and output units)
+		addGroup hidden $hiddenUnits
+
+		# output group
+		addGroup Object_Left_OUT 104 OUTPUT  
+		addGroup Object_Right_OUT 104 OUTPUT  
+		addGroup saliva_left_identity_OUT 2 OUTPUT  
+		addGroup saliva_right_identity_OUT 2 OUTPUT
+		addGroup comfort_left_identity_OUT 2 OUTPUT  
+		addGroup comfort_right_identity_OUT 2 OUTPUT
+		addGroup Distress_OUT 2 OUTPUT 
+		addGroup Action_OUT 2 OUTPUT 
+		addGroup Comfort_OUT 2 OUTPUT 
+		addGroup Food_OUT 5 OUTPUT
+
+		# connect groups (input -> hidden -> output)
+		connectGroups {Object_Left_IN Object_Right_IN saliva_left_identity_IN saliva_right_identity_IN comfort_right_identity_IN comfort_left_identity_IN Distress_IN Action_IN Comfort_IN} hidden {Object_Left_OUT Object_Right_OUT saliva_left_identity_OUT saliva_right_identity_OUT comfort_right_identity_OUT comfort_left_identity_OUT Distress_OUT Action_OUT Comfort_OUT}
+
+		deleteGroups bias
+
+		# training examples
+		loadExamples pretrain.ex -e PERMUTED
+		loadExamples familiarization_foodSharing_newPuppet.ex
+		loadExamples familiarization_salivaOnly.ex
+		loadExamples familiarization_comfortDistress.ex
+		loadExamples test_foodSharing_salivaOnly
+		loadExamples test_newPuppet
+		loadExamples test_ComfortingDistress.ex
+		loadExamples test_ComfortingDistress_control.ex
+
+		# set learning and display parameters
+		setObj learningRate $learningRates
+		setObj momentum	    0
+		setObj batchSize    0
+		setObj numUpdates   10
+		setObj reportInterval 1
+		setObj unitCellSize 12
+		setObj linkCellSize 10
+		setObj randRange 0.1
+		setObj pseudoExampleFreq 1
+
+		# create a function that gets the error for each test example
+		proc saveActivations {fname} { 
+			set outfile [open $fname a] 
+			puts $outfile "[getObj currentExample.num] [getObj currentExample.name] " nonewline 
+			puts $outfile [getObj exampleError]
+			close $outfile 
+		}
+
+		proc testAllFinalActs {fname} { 
+			resetExampleSet [getObj testingSet.name] 
+			set nex [getObj testingSet.numExamples] 
+			for {set i 0} {$i < $nex} {incr i} {
+				doExample -set [getObj testingSet.name]
+				saveActivations $fname
+			}
+		}
+
+		proc testNetwork {n train trainNum train2 trainNum2 test fname} {
+			for {set i 0} {$i < $n} {incr i} {
+				resetNet
+				useTrainingSet $train
+				train $trainNum
+				useTrainingSet $train2
+				train $trainNum2
+				useTestingSet $test
+				testAllFinalActs $fname
+			}
+		}
+
+		# define lists for looping
+		
+		set condition [list foodSharing newPuppet]
+		set habEvent [list familiarization_foodSharing_newPuppet familiarization_foodSharing_newPuppet]
+		set testEvent [list test_foodSharing_salivaOnly test_newPuppet]
+		set trainingEpochs [list 5 10]
+
+		# define loop
+		
+		# User should set this to the location of the project folder
+		set projectDir "/path/to/salivaModel/simulation4"
+
+		foreach cond $condition hEvent $habEvent tEvent $testEvent {
+			set workingdirectory "$projectDir/data/$cond"
+			cd $workingdirectory
+			foreach tEpochs $trainingEpochs {
+				testNetwork 20 pretrain $pretrainingEpochs $hEvent $tEpochs $tEvent lRates_${learningRates}_hUnits_${hiddenUnits}_pEpochs_${pretrainingEpochs}_${cond}_tEpochs_${tEpochs}.txt
+			}
+		}
+	}
+	
+	# define list for looping over networks
+	set learningRates [list 0.001 0.01 0.1]
+	set pretrainingEpochs [list 100 300 800]
+	set hiddenUnits [list 10 20 30]
+	
+	foreach lrs $learningRates pes $pretrainingEpochs hus $hiddenUnits {
+		gridDevSim $lrs$pes$hus $lrs $pes $hus 
+	}
+	
+}
+
+# Uncomment "sim4" below to automate the simulation.
+# Note that users may get differ results than those reported in the paper.
+# This is expected given that each run of the models begins with a fresh set 
+# of random weights.
+
+#sim4

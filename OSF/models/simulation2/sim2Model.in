@@ -1,0 +1,127 @@
+# Author: Deon T. Benton
+# Simulation information: The code below corresponds to Simulation 2 reported in the paper.
+
+proc sim2 {} {
+	addNet sim2 
+
+	# input groups
+	addGroup Object_Left_IN 104 INPUT OUT_NOISE   
+	addGroup Object_Right_IN 104 INPUT OUT_NOISE   
+	addGroup saliva_left_identity_IN 2 INPUT OUT_NOISE 
+	addGroup saliva_right_identity_IN 2 INPUT OUT_NOISE   
+	addGroup comfort_right_identity_IN 2 INPUT OUT_NOISE 
+	addGroup comfort_left_identity_IN 2 INPUT OUT_NOISE  
+	addGroup Distress_IN 2 INPUT OUT_NOISE 
+	addGroup Action_IN 2 INPUT OUT_NOISE 
+	addGroup Comfort_IN 2 INPUT OUT_NOISE  
+	addGroup Food_IN 5 INPUT OUT_NOISE
+	 
+	# hidden group (# there are necessarily fewer hidden units than there are input and output units)
+	addGroup hidden 30 
+	
+	# noise parameters
+	noiseType Object_Left_IN -range 0.875
+	noiseType Object_Right_IN -range 0.875
+	noiseType saliva_left_identity_IN -range 0.875
+	noiseType saliva_right_identity_IN -range 0.875
+	noiseType comfort_right_identity_IN -range 0.875
+	noiseType comfort_left_identity_IN -range 0.875
+	noiseType Distress_IN -range 0.875
+	noiseType Action_IN -range 0.875
+	noiseType Comfort_IN -range 0.875
+	noiseType Food_IN -range 0.875
+		
+	# output group
+	addGroup Object_Left_OUT 104 OUTPUT  
+	addGroup Object_Right_OUT 104 OUTPUT  
+	addGroup saliva_left_identity_OUT 2 OUTPUT  
+	addGroup saliva_right_identity_OUT 2 OUTPUT
+	addGroup comfort_left_identity_OUT 2 OUTPUT  
+	addGroup comfort_right_identity_OUT 2 OUTPUT
+	addGroup Distress_OUT 2 OUTPUT 
+	addGroup Action_OUT 2 OUTPUT 
+	addGroup Comfort_OUT 2 OUTPUT 
+	addGroup Food_OUT 5 OUTPUT
+
+	# connect groups (input -> hidden -> output)
+	connectGroups {Object_Left_IN Object_Right_IN saliva_left_identity_IN saliva_right_identity_IN comfort_right_identity_IN comfort_left_identity_IN Distress_IN Action_IN Comfort_IN} hidden {Object_Left_OUT Object_Right_OUT saliva_left_identity_OUT saliva_right_identity_OUT comfort_right_identity_OUT comfort_left_identity_OUT Distress_OUT Action_OUT Comfort_OUT}
+
+	deleteGroups bias
+
+	## training examples
+	loadExamples pretrain.ex -e PERMUTED
+	loadExamples familiarization_foodSharing.ex
+	loadExamples peekaboo.ex
+
+	# set learning and display parameters
+	setObj learningRate 0.1
+	setObj momentum	    0
+	setObj batchSize    0
+	setObj numUpdates   10
+	setObj reportInterval 1
+	setObj unitCellSize 12
+	setObj linkCellSize 10
+	setObj randRange 0.1
+	setObj pseudoExampleFreq 1
+
+	# create a function that gets the error for each test example
+	proc saveActivations {fname} { 
+		set outfile [open $fname a] 
+		puts $outfile "[getObj currentExample.num] [getObj currentExample.name] " nonewline 
+		puts $outfile [getObj exampleError]
+		close $outfile 
+	}
+
+	proc testAllFinalActs {fname} { 
+		resetExampleSet [getObj testingSet.name] 
+		set nex [getObj testingSet.numExamples] 
+		for {set i 0} {$i < $nex} {incr i} {
+			doExample -set [getObj testingSet.name]
+			saveActivations $fname
+		}
+	}
+
+	proc testNetwork {n train trainNum train2 trainNum2 test fname} {
+		for {set i 0} {$i < $n} {incr i} {
+			resetNet
+			useTrainingSet $train
+			train $trainNum
+			useTrainingSet $train2
+			train $trainNum2
+			useTestingSet $test
+			testAllFinalActs $fname			
+		}
+	}
+
+	# define lists for looping
+	
+	set condition [list sim2]
+	set habEvent [list familiarization_foodSharing]
+	set testEvent [list peekaboo]
+	set pretrainingEpochs [list 800 600 700]
+	set trainingEpochs [list 10 5]
+
+
+
+	# define loop
+	
+	# User should set this to the location of the project folder
+	set projectDir "/path/to/salivaModel/simulation2"
+	
+	foreach cond $condition hEvent $habEvent tEvent $testEvent {
+		set workingdirectory "$projectDir/data/$cond"
+		cd $workingdirectory
+		foreach tEpochs $trainingEpochs {
+			foreach epochs $pretrainingEpochs {
+				testNetwork 20 pretrain $epochs $hEvent $tEpochs $tEvent pEpochs_${epochs}_${cond}_tEpochs_${tEpochs}.txt
+			}
+		}
+	}
+}
+
+# Uncomment "sim2" below to automate the simulation.
+# Note that users may get differ results than those reported in the paper.
+# This is expected given that each run of the models begins with a fresh set 
+# of random weights.
+
+#sim2
